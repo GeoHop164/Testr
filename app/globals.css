@@ -594,6 +594,76 @@ button:disabled {
 }
 
 @media (max-width: 620px) {
+  .app-shell {
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: 0.55rem;
+    overflow: hidden;
+  }
+
+  .frame {
+    height: calc(100dvh - 1.1rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .title-card {
+    flex: 0 0 auto;
+    padding: 0.5rem;
+    font-size: 1.3rem;
+  }
+
+  .panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .run-panel {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto auto;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    overflow: hidden;
+  }
+
+  .run-panel .panel-head {
+    margin-bottom: 0;
+    padding-bottom: 0.35rem;
+  }
+
+  .run-panel .progress-track {
+    margin-bottom: 0;
+  }
+
+  .run-panel .deck-area {
+    min-height: 0;
+    height: 100%;
+    margin-bottom: 0;
+  }
+
+  .run-panel .test-card.current {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.75rem;
+  }
+
+  .run-panel .test-card.current .field textarea {
+    min-height: 90px;
+  }
+
+  .run-panel .button-row.run-controls {
+    margin-top: 0;
+    gap: 0.45rem;
+  }
+
+  .run-panel .hint-line {
+    margin: 0;
+    padding: 0.4rem;
+    font-size: 0.86rem;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr;
   }
@@ -602,8 +672,9 @@ button:disabled {
     flex-direction: column;
   }
 
-  .deck-area {
-    min-height: 560px;
+  .report-panel .report-card,
+  .report-panel .history-column {
+    box-shadow: 3px 3px 0 var(--ink);
   }
 }
 
