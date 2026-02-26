@@ -11,6 +11,7 @@ import {
 } from "react";
 
 const HISTORY_STORAGE_KEY = "qa-swipe-report-history-v1";
+const INSTALL_PROMPT_DISMISS_KEY = "qa-swipe-install-dismiss-v1";
 const SWIPE_THRESHOLD = 120;
 const MAX_HISTORY_ITEMS = 50;
 
@@ -80,6 +81,14 @@ type SavedReport = {
 	results: TestResult[];
 	source: PlanInput;
 };
+
+interface BeforeInstallPromptEvent extends Event {
+	prompt: () => Promise<void>;
+	userChoice: Promise<{
+		outcome: "accepted" | "dismissed";
+		platform: string;
+	}>;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -254,6 +263,11 @@ export default function Home() {
 	const [history, setHistory] = useState<SavedReport[]>([]);
 	const [activeReportId, setActiveReportId] = useState<string | null>(null);
 	const [showRawJson, setShowRawJson] = useState(false);
+	const [deferredInstallPrompt, setDeferredInstallPrompt] =
+		useState<BeforeInstallPromptEvent | null>(null);
+	const [installDismissed, setInstallDismissed] = useState(false);
+	const [isInstalled, setIsInstalled] = useState(false);
+	const [isInstalling, setIsInstalling] = useState(false);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -274,6 +288,54 @@ export default function Home() {
 		} catch {
 			window.localStorage.removeItem(HISTORY_STORAGE_KEY);
 		}
+
+		const dismissed = window.localStorage.getItem(
+			INSTALL_PROMPT_DISMISS_KEY,
+		);
+		if (dismissed === "1") {
+			setInstallDismissed(true);
+		}
+
+		const isStandalone =
+			window.matchMedia("(display-mode: standalone)").matches ||
+			Boolean(
+				(
+					window.navigator as Navigator & {
+						standalone?: boolean;
+					}
+				).standalone,
+			);
+		if (isStandalone) {
+			setIsInstalled(true);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+
+		const onBeforeInstallPrompt = (event: Event) => {
+			const promptEvent = event as BeforeInstallPromptEvent;
+			promptEvent.preventDefault();
+			setDeferredInstallPrompt(promptEvent);
+		};
+
+		const onAppInstalled = () => {
+			setIsInstalled(true);
+			setDeferredInstallPrompt(null);
+		};
+
+		window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+		window.addEventListener("appinstalled", onAppInstalled);
+
+		return () => {
+			window.removeEventListener(
+				"beforeinstallprompt",
+				onBeforeInstallPrompt,
+			);
+			window.removeEventListener("appinstalled", onAppInstalled);
+		};
 	}, []);
 
 	useEffect(() => {
@@ -580,6 +642,36 @@ export default function Home() {
 		setActiveReportId(null);
 	}, []);
 
+	const triggerInstall = useCallback(async () => {
+		if (!deferredInstallPrompt) {
+			return;
+		}
+
+		setIsInstalling(true);
+		try {
+			await deferredInstallPrompt.prompt();
+			const choice = await deferredInstallPrompt.userChoice;
+			if (choice.outcome === "accepted") {
+				setDeferredInstallPrompt(null);
+			}
+		} finally {
+			setIsInstalling(false);
+		}
+	}, [deferredInstallPrompt]);
+
+	const dismissInstallPrompt = useCallback(() => {
+		setInstallDismissed(true);
+		if (typeof window !== "undefined") {
+			window.localStorage.setItem(INSTALL_PROMPT_DISMISS_KEY, "1");
+		}
+	}, []);
+
+	const showInstallPrompt =
+		step === "start" &&
+		!isInstalled &&
+		!installDismissed &&
+		Boolean(deferredInstallPrompt);
+
 	return (
 		<main className="app-shell">
 			<section className="frame">
@@ -612,6 +704,36 @@ export default function Home() {
 								Open Report History
 							</button>
 						</div>
+
+						{showInstallPrompt && (
+							<div className="install-card">
+								<h2>Install QA Swipe Console</h2>
+								<p>
+									Add this app to your device for faster
+									access, full-screen mode, and offline
+									report review.
+								</p>
+								<div className="button-row compact">
+									<button
+										type="button"
+										className="action-btn mint"
+										onClick={triggerInstall}
+										disabled={isInstalling}
+									>
+										{isInstalling
+											? "Opening Installer..."
+											: "Install App"}
+									</button>
+									<button
+										type="button"
+										className="action-btn peach"
+										onClick={dismissInstallPrompt}
+									>
+										Don&apos;t Show Again
+									</button>
+								</div>
+							</div>
+						)}
 
 						{history[0] && (
 							<div className="mini-card">

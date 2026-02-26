@@ -309,6 +309,33 @@ button:disabled {
   background: #f4f4f4;
 }
 
+.install-card {
+  margin-top: 1rem;
+  border: 3px solid var(--ink);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--lilac) 25%, #ffffff 75%),
+    color-mix(in srgb, var(--mint) 24%, #ffffff 76%)
+  );
+  padding: 0.8rem;
+}
+
+.install-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-family: var(--font-head);
+}
+
+.install-card p {
+  margin: 0.45rem 0 0;
+  max-width: 64ch;
+  line-height: 1.35;
+}
+
+.install-card .button-row {
+  margin-top: 0.75rem;
+}
+
 .mini-card {
   margin-top: 1rem;
   border: 3px solid var(--ink);

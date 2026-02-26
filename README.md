@@ -1,36 +1,144 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# QA Swipe Console (`testr.noetic.studio`)
 
-## Getting Started
+A retro-styled, Tinder-swipe QA runner built with Next.js.
 
-First, run the development server:
+Users import a JSON test plan (paste or file upload), then execute each test by swiping **Pass/Fail** with optional comments. The app generates a report, supports printing/export, and keeps report history in local storage.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Features
+
+- Start -> Input -> Swipe -> Report flow
+- JSON import via file (`.json`) or copy/paste
+- Per-test optional comment before verdict
+- Swipe gestures:
+  - Swipe right = Pass
+  - Swipe left = Fail
+- Keyboard controls:
+  - `P` or `Right Arrow` = Pass
+  - `F` or `Left Arrow` = Fail
+  - `U` or `Cmd/Ctrl + Z` = Undo
+- Undo support during test execution
+- Report page with:
+  - totals (pass/fail/total)
+  - category summary
+  - detailed per-test results + comments
+- Print report
+- Export report as JSON
+- Local report history in `localStorage` (re-open/download/delete)
+- PWA install prompt with `Don't Show Again` preference saved in `localStorage`
+
+## JSON Input Format
+
+```json
+{
+  "Category 1": [
+    {
+      "action": "click the log in button",
+      "result": "user is logged in"
+    },
+    {
+      "action": "click the log out button",
+      "result": "user is logged out"
+    }
+  ],
+  "Category 2": [
+    {
+      "action": "click the log in button",
+      "result": "user is logged in"
+    }
+  ]
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Validation rules:
+- Root must be an object
+- Keys are category names
+- Category values must be arrays
+- Each test item must include non-empty `action` and `result` strings
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Open `http://localhost:3000`.
 
-To learn more about Next.js, take a look at the following resources:
+Production checks:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+npm run start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## PWA Setup (Implemented)
 
-## Deploy on Vercel
+This app is configured as an installable PWA for `https://testr.noetic.studio`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Implemented assets/config:
+- Web manifest route: `app/manifest.ts` -> `/manifest.webmanifest`
+- Service worker: `public/sw.js`
+- Service worker registration: `app/pwa-register.tsx`
+- Offline fallback page: `app/offline/page.tsx`
+- PWA metadata/icons: `app/layout.tsx`
+- Icons:
+  - `public/icons/icon-192.png`
+  - `public/icons/icon-512.png`
+  - `public/icons/icon-maskable-512.png`
+  - `public/icons/apple-touch-icon.png`
+  - `public/icons/icon.svg`
+- Response headers for SW/manifest: `next.config.ts`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy Requirements for Valid PWA
+
+To keep installability valid in production:
+- Serve over HTTPS (required)
+- Deploy on `https://testr.noetic.studio`
+- Ensure `/sw.js` is served from the app origin root
+- Do not block `manifest.webmanifest` or icon files
+- Keep service worker scope at `/`
+
+Recommended post-deploy checks:
+- Chrome DevTools -> Application -> Manifest (all icons recognized)
+- Chrome DevTools -> Application -> Service Workers (active + controlling page)
+- Lighthouse PWA audit (installable + offline support)
+
+## Cloudflare Pages (No Workers)
+
+Yes, this app can be deployed to Cloudflare Pages without Workers by using static export mode.
+
+Build command:
+
+```bash
+npm run build:pages
+```
+
+Output directory:
+
+```text
+out
+```
+
+Cloudflare Pages settings:
+- Framework preset: `None` (or Next.js with custom static settings)
+- Build command: `npm run build:pages`
+- Build output directory: `out`
+- Node.js: 18+ recommended
+
+Notes:
+- In `build:pages`, Next runs with `STATIC_EXPORT=true`, which enables `output: "export"` in `next.config.ts`.
+- `public/_headers` is included for static hosting cache/content-type rules for `sw.js` and `manifest.webmanifest`.
+
+## Data Storage
+
+- Report history key: `qa-swipe-report-history-v1`
+- Storage location: browser `localStorage`
+- Data includes suite metadata, summary, detailed results, and source JSON
+
+## Tech
+
+- Next.js (App Router)
+- React
+- TypeScript
+- Tailwind available (global CSS uses custom style system)

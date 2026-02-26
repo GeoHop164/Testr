@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">QA Swipe Console Icon</title>
+  <desc id="desc">Retro-style square app icon with QA letters and pass/fail bars.</desc>
+  <rect width="1024" height="1024" fill="#f5f0df"/>
+  <rect x="80" y="80" width="864" height="864" rx="72" fill="#66c4c1" stroke="#111111" stroke-width="40"/>
+  <rect x="154" y="176" width="716" height="212" rx="32" fill="#fdfaf0" stroke="#111111" stroke-width="28"/>
+  <text x="512" y="322" text-anchor="middle" font-family="Rockwell, serif" font-weight="700" font-size="210" fill="#111111">QA</text>
+  <rect x="154" y="452" width="716" height="116" rx="24" fill="#86b48e" stroke="#111111" stroke-width="24"/>
+  <text x="512" y="533" text-anchor="middle" font-family="Courier New, monospace" font-weight="700" font-size="70" fill="#111111">PASS</text>
+  <rect x="154" y="616" width="716" height="220" rx="24" fill="#e38a8d" stroke="#111111" stroke-width="24"/>
+  <text x="512" y="748" text-anchor="middle" font-family="Courier New, monospace" font-weight="700" font-size="110" fill="#111111">FAIL</text>
+</svg>
