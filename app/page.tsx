@@ -256,9 +256,14 @@ export default function Home() {
 
 	const [dragOffset, setDragOffset] = useState(0);
 	const [isDragging, setIsDragging] = useState(false);
-	const pointerRef = useRef<{ pointerId: number; startX: number } | null>(
-		null,
-	);
+	const [exitVerdict, setExitVerdict] = useState<Verdict | null>(null);
+	const pointerRef = useRef<{
+		pointerId: number;
+		startX: number;
+		startY: number;
+		locked: boolean;
+	} | null>(null);
+	const swipeTimeoutRef = useRef<number | null>(null);
 
 	const [history, setHistory] = useState<SavedReport[]>([]);
 	const [activeReportId, setActiveReportId] = useState<string | null>(null);
@@ -366,6 +371,11 @@ export default function Home() {
 	const swipeRatio = Math.max(-1, Math.min(1, dragOffset / SWIPE_THRESHOLD));
 
 	const clearRunState = useCallback(() => {
+		if (swipeTimeoutRef.current !== null) {
+			clearTimeout(swipeTimeoutRef.current);
+			swipeTimeoutRef.current = null;
+		}
+
 		setSourcePlan(null);
 		setTests([]);
 		setCursor(0);
@@ -373,6 +383,7 @@ export default function Home() {
 		setCommentDrafts({});
 		setDragOffset(0);
 		setIsDragging(false);
+		setExitVerdict(null);
 	}, []);
 
 	const openNewPlan = useCallback(() => {
@@ -409,7 +420,7 @@ export default function Home() {
 		[sourcePlan, suiteName],
 	);
 
-	const recordVerdict = useCallback(
+	const commitVerdict = useCallback(
 		(verdict: Verdict) => {
 			if (step !== "run") {
 				return;
@@ -431,7 +442,6 @@ export default function Home() {
 			nextResults[cursor] = entry;
 
 			setResults(nextResults);
-			setDragOffset(0);
 			setIsDragging(false);
 
 			const nextCursor = cursor + 1;
@@ -445,8 +455,44 @@ export default function Home() {
 		[step, tests, cursor, commentDrafts, results, finishRun],
 	);
 
+	const recordVerdict = useCallback(
+		(verdict: Verdict) => {
+			if (step !== "run" || exitVerdict) {
+				return;
+			}
+
+			const target = tests[cursor];
+			if (!target) {
+				return;
+			}
+
+			const screenWidth =
+				typeof window !== "undefined" ? window.innerWidth : 480;
+			const offscreenDistance = Math.round(screenWidth * 1.2);
+			const signedDistance =
+				verdict === "pass" ? offscreenDistance : -offscreenDistance;
+
+			if (swipeTimeoutRef.current !== null) {
+				clearTimeout(swipeTimeoutRef.current);
+				swipeTimeoutRef.current = null;
+			}
+
+			setIsDragging(false);
+			setExitVerdict(verdict);
+			setDragOffset(signedDistance);
+
+			swipeTimeoutRef.current = window.setTimeout(() => {
+				commitVerdict(verdict);
+				setExitVerdict(null);
+				setDragOffset(0);
+				swipeTimeoutRef.current = null;
+			}, 220);
+		},
+		[step, exitVerdict, tests, cursor, commitVerdict],
+	);
+
 	const undoLast = useCallback(() => {
-		if (step !== "run" || cursor === 0) {
+		if (step !== "run" || cursor === 0 || exitVerdict) {
 			return;
 		}
 
@@ -458,9 +504,14 @@ export default function Home() {
 		setCursor(previousIndex);
 		setDragOffset(0);
 		setIsDragging(false);
-	}, [step, cursor, results]);
+	}, [step, cursor, results, exitVerdict]);
 
 	const submitPlan = useCallback(() => {
+		if (swipeTimeoutRef.current !== null) {
+			clearTimeout(swipeTimeoutRef.current);
+			swipeTimeoutRef.current = null;
+		}
+
 		try {
 			const parsed = parsePlan(jsonDraft);
 			setSourcePlan(parsed.source);
@@ -471,6 +522,7 @@ export default function Home() {
 			setParseError(null);
 			setDragOffset(0);
 			setIsDragging(false);
+			setExitVerdict(null);
 			setStep("run");
 		} catch (error) {
 			if (error instanceof Error) {
@@ -510,14 +562,25 @@ export default function Home() {
 
 	const handlePointerDown = useCallback(
 		(event: PointerEvent<HTMLDivElement>) => {
+			if (exitVerdict) {
+				return;
+			}
+
+			const target = event.target as HTMLElement;
+			if (
+				target.closest("textarea, input, button, select, option, label")
+			) {
+				return;
+			}
+
 			pointerRef.current = {
 				pointerId: event.pointerId,
 				startX: event.clientX,
+				startY: event.clientY,
+				locked: false,
 			};
-			setIsDragging(true);
-			event.currentTarget.setPointerCapture(event.pointerId);
 		},
-		[],
+		[exitVerdict],
 	);
 
 	const handlePointerMove = useCallback(
@@ -527,7 +590,31 @@ export default function Home() {
 				return;
 			}
 
-			setDragOffset(event.clientX - pointer.startX);
+			const deltaX = event.clientX - pointer.startX;
+			const deltaY = event.clientY - pointer.startY;
+
+			if (!pointer.locked) {
+				const absX = Math.abs(deltaX);
+				const absY = Math.abs(deltaY);
+
+				if (absY > 10 && absY > absX) {
+					pointerRef.current = null;
+					setIsDragging(false);
+					setDragOffset(0);
+					return;
+				}
+
+				if (absX > 10 && absX >= absY) {
+					pointer.locked = true;
+					pointerRef.current = pointer;
+					setIsDragging(true);
+					event.currentTarget.setPointerCapture(event.pointerId);
+				} else {
+					return;
+				}
+			}
+
+			setDragOffset(deltaX);
 		},
 		[],
 	);
@@ -559,6 +646,20 @@ export default function Home() {
 				return;
 			}
 
+			if (
+				pointer.locked &&
+				event.currentTarget.hasPointerCapture(event.pointerId)
+			) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
+
+			if (!pointer.locked) {
+				pointerRef.current = null;
+				setDragOffset(0);
+				setIsDragging(false);
+				return;
+			}
+
 			resolvePointerUp(event.clientX - pointer.startX);
 		},
 		[resolvePointerUp],
@@ -574,10 +675,22 @@ export default function Home() {
 			pointerRef.current = null;
 			setDragOffset(0);
 			setIsDragging(false);
-			event.currentTarget.releasePointerCapture(event.pointerId);
+
+			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
 		},
 		[],
 	);
+
+	useEffect(() => {
+		return () => {
+			if (swipeTimeoutRef.current !== null) {
+				clearTimeout(swipeTimeoutRef.current);
+				swipeTimeoutRef.current = null;
+			}
+		};
+	}, []);
 
 	useEffect(() => {
 		if (step !== "run") {
@@ -861,9 +974,10 @@ export default function Home() {
 								className="test-card current"
 								style={{
 									transform: `translateX(${dragOffset}px) rotate(${dragOffset / 24}deg)`,
+									opacity: exitVerdict ? 0 : 1,
 									transition: isDragging
 										? "none"
-										: "transform 180ms ease",
+										: "transform 220ms cubic-bezier(0.18, 0.88, 0.32, 1), opacity 220ms ease",
 								}}
 								onPointerDown={handlePointerDown}
 								onPointerMove={handlePointerMove}
@@ -917,6 +1031,7 @@ export default function Home() {
 								type="button"
 								className="action-btn rose"
 								onClick={() => recordVerdict("fail")}
+								disabled={Boolean(exitVerdict)}
 							>
 								Fail (F / ←)
 							</button>
@@ -924,7 +1039,7 @@ export default function Home() {
 								type="button"
 								className="action-btn peach"
 								onClick={undoLast}
-								disabled={cursor === 0}
+								disabled={cursor === 0 || Boolean(exitVerdict)}
 							>
 								Undo (U)
 							</button>
@@ -932,6 +1047,7 @@ export default function Home() {
 								type="button"
 								className="action-btn mint"
 								onClick={() => recordVerdict("pass")}
+								disabled={Boolean(exitVerdict)}
 							>
 								Pass (P / →)
 							</button>
