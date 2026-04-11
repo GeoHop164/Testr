@@ -23,6 +23,7 @@ Users import a JSON test plan (paste or file upload), then execute each test by 
   - detailed per-test results + comments
 - Print report
 - Export report as JSON
+- Live in-progress session persistence in `localStorage` for refresh/restart recovery
 - Local report history in `localStorage` (re-open/download/delete)
 - PWA install prompt with `Don't Show Again` preference saved in `localStorage`
 
@@ -132,9 +133,11 @@ Notes:
 
 ## Data Storage
 
+- App session key: `qa-swipe-app-state-v1`
 - Report history key: `qa-swipe-report-history-v1`
 - Storage location: browser `localStorage`
-- Data includes suite metadata, summary, detailed results, and source JSON
+- App session data includes current screen, plan draft, active test progress, comments, and selected report
+- Report history data includes suite metadata, summary, detailed results, and source JSON
 
 ## Tech
 

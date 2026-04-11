@@ -11,6 +11,7 @@ import {
 } from "react";
 
 const HISTORY_STORAGE_KEY = "qa-swipe-report-history-v1";
+const APP_STATE_STORAGE_KEY = "qa-swipe-app-state-v1";
 const INSTALL_PROMPT_DISMISS_KEY = "qa-swipe-install-dismiss-v1";
 const SWIPE_THRESHOLD = 120;
 const MAX_HISTORY_ITEMS = 50;
@@ -82,6 +83,20 @@ type SavedReport = {
 	source: PlanInput;
 };
 
+type PersistedAppState = {
+	version: 1;
+	step: Step;
+	suiteName: string;
+	jsonDraft: string;
+	sourcePlan: PlanInput | null;
+	tests: FlatTest[];
+	cursor: number;
+	results: Array<TestResult | null>;
+	commentDrafts: Record<string, string>;
+	history: SavedReport[];
+	activeReportId: string | null;
+};
+
 interface BeforeInstallPromptEvent extends Event {
 	prompt: () => Promise<void>;
 	userChoice: Promise<{
@@ -92,6 +107,120 @@ interface BeforeInstallPromptEvent extends Event {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStep(value: unknown): value is Step {
+	return (
+		value === "start" ||
+		value === "input" ||
+		value === "run" ||
+		value === "report"
+	);
+}
+
+function isVerdict(value: unknown): value is Verdict {
+	return value === "pass" || value === "fail";
+}
+
+function isPlanGroup(value: unknown): value is PlanGroup {
+	return (
+		isRecord(value) &&
+		typeof value.action === "string" &&
+		typeof value.result === "string"
+	);
+}
+
+function isPlanInput(value: unknown): value is PlanInput {
+	return (
+		isRecord(value) &&
+		Object.values(value).every(
+			(group) => Array.isArray(group) && group.every(isPlanGroup),
+		)
+	);
+}
+
+function isFlatTest(value: unknown): value is FlatTest {
+	return (
+		isRecord(value) &&
+		typeof value.id === "string" &&
+		typeof value.category === "string" &&
+		typeof value.action === "string" &&
+		typeof value.expected === "string" &&
+		typeof value.sequence === "number"
+	);
+}
+
+function isTestResult(value: unknown): value is TestResult {
+	if (!isRecord(value) || !isFlatTest(value)) {
+		return false;
+	}
+
+	const recordValue = value as Record<string, unknown>;
+
+	return (
+		isVerdict(recordValue.verdict) &&
+		typeof recordValue.comment === "string"
+	);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+	return (
+		isRecord(value) &&
+		Object.values(value).every((item) => typeof item === "string")
+	);
+}
+
+function isCategorySummary(value: unknown): value is CategorySummary {
+	return (
+		isRecord(value) &&
+		Object.values(value).every(
+			(item) =>
+				isRecord(item) &&
+				typeof item.passed === "number" &&
+				typeof item.failed === "number" &&
+				typeof item.total === "number",
+		)
+	);
+}
+
+function isSavedReport(value: unknown): value is SavedReport {
+	return (
+		isRecord(value) &&
+		typeof value.id === "string" &&
+		typeof value.suiteName === "string" &&
+		typeof value.createdAt === "string" &&
+		typeof value.total === "number" &&
+		typeof value.passed === "number" &&
+		typeof value.failed === "number" &&
+		isCategorySummary(value.byCategory) &&
+		Array.isArray(value.results) &&
+		value.results.every(isTestResult) &&
+		isPlanInput(value.source)
+	);
+}
+
+function isPersistedAppState(value: unknown): value is PersistedAppState {
+	return (
+		isRecord(value) &&
+		value.version === 1 &&
+		isStep(value.step) &&
+		typeof value.suiteName === "string" &&
+		typeof value.jsonDraft === "string" &&
+		(value.sourcePlan === null || isPlanInput(value.sourcePlan)) &&
+		Array.isArray(value.tests) &&
+		value.tests.every(isFlatTest) &&
+		typeof value.cursor === "number" &&
+		value.cursor >= 0 &&
+		Array.isArray(value.results) &&
+		value.results.every(
+			(item) => item === null || isTestResult(item),
+		) &&
+		isStringRecord(value.commentDrafts) &&
+		Array.isArray(value.history) &&
+		value.history.every(isSavedReport) &&
+		(value.activeReportId === null ||
+			typeof value.activeReportId === "string")
+	);
 }
 
 function toSafeId() {
@@ -273,25 +402,49 @@ export default function Home() {
 	const [installDismissed, setInstallDismissed] = useState(false);
 	const [isInstalled, setIsInstalled] = useState(false);
 	const [isInstalling, setIsInstalling] = useState(false);
+	const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
 			return;
 		}
 
-		const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-		if (!raw) {
-			return;
-		}
-
-		try {
-			const parsed = JSON.parse(raw) as SavedReport[];
-			if (Array.isArray(parsed)) {
-				setHistory(parsed);
-				setActiveReportId(parsed[0]?.id ?? null);
+		const rawAppState = window.localStorage.getItem(APP_STATE_STORAGE_KEY);
+		if (rawAppState) {
+			try {
+				const parsed = JSON.parse(rawAppState);
+				if (isPersistedAppState(parsed)) {
+					setStep(parsed.step);
+					setSuiteName(parsed.suiteName);
+					setJsonDraft(parsed.jsonDraft);
+					setSourcePlan(parsed.sourcePlan);
+					setTests(parsed.tests);
+					setCursor(parsed.cursor);
+					setResults(parsed.results);
+					setCommentDrafts(parsed.commentDrafts);
+					setHistory(parsed.history);
+					setActiveReportId(parsed.activeReportId);
+				} else {
+					window.localStorage.removeItem(APP_STATE_STORAGE_KEY);
+				}
+			} catch {
+				window.localStorage.removeItem(APP_STATE_STORAGE_KEY);
 			}
-		} catch {
-			window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+		} else {
+			const rawHistory = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+			if (rawHistory) {
+				try {
+					const parsed = JSON.parse(rawHistory);
+					if (Array.isArray(parsed) && parsed.every(isSavedReport)) {
+						setHistory(parsed);
+						setActiveReportId(parsed[0]?.id ?? null);
+					} else {
+						window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+					}
+				} catch {
+					window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+				}
+			}
 		}
 
 		const dismissed = window.localStorage.getItem(
@@ -313,6 +466,8 @@ export default function Home() {
 		if (isStandalone) {
 			setIsInstalled(true);
 		}
+
+		setHasHydratedAppState(true);
 	}, []);
 
 	useEffect(() => {
@@ -348,11 +503,56 @@ export default function Home() {
 			return;
 		}
 
+		if (!hasHydratedAppState) {
+			return;
+		}
+
 		window.localStorage.setItem(
 			HISTORY_STORAGE_KEY,
 			JSON.stringify(history),
 		);
-	}, [history]);
+	}, [history, hasHydratedAppState]);
+
+	useEffect(() => {
+		if (typeof window === "undefined") {
+			return;
+		}
+
+		if (!hasHydratedAppState) {
+			return;
+		}
+
+		const persistedState: PersistedAppState = {
+			version: 1,
+			step,
+			suiteName,
+			jsonDraft,
+			sourcePlan,
+			tests,
+			cursor,
+			results,
+			commentDrafts,
+			history,
+			activeReportId,
+		};
+
+		window.localStorage.setItem(
+			APP_STATE_STORAGE_KEY,
+			JSON.stringify(persistedState),
+		);
+	}, [
+		step,
+		suiteName,
+		jsonDraft,
+		sourcePlan,
+		tests,
+		cursor,
+		results,
+		commentDrafts,
+		history,
+		activeReportId,
+		hasHydratedAppState,
+	]);
 
 	useEffect(() => {
 		setShowRawJson(false);
